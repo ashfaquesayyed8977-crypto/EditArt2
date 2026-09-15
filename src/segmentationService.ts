@@ -20,7 +20,7 @@ const baseConfig: Config = {
   device: 'cpu',
   proxyToWorker: false,
   output: { format: 'image/png', quality: 1 },
-  publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/',
+  publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/',
 };
 
 /**
