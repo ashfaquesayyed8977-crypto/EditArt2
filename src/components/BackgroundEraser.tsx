@@ -18,7 +18,7 @@ import {
   Check,
   Layers,
 } from 'lucide-react';
-import { removeBg, preloadModel, isModelCached } from '../segmentationService';
+import { removeBg } from '../segmentationService';
 import { fileToDataURL, loadImage, canvasToBlob, downloadBlob } from '../canvasUtils';
 import { floodFill, featherMask } from '../magicTool';
 
@@ -336,22 +336,6 @@ export default function BackgroundEraser({ onBack }: Props) {
     setErrorMsg('');
 
     try {
-      // Phase 1: Download model if not cached
-      if (!isModelCached()) {
-        setAiPhase('downloading');
-        setProgressLabel('Downloading AI Model (20MB one-time)');
-        setProgressValue(0);
-        await preloadModel((key, current, total) => {
-          const isDownload = key.includes('fetch') || key.includes('download') || key.includes('progress') || total > 100000;
-          if (isDownload) {
-            setAiPhase('downloading');
-            const pct = total > 0 ? current / total : 0;
-            setProgressValue(pct);
-            setProgressLabel(`Downloading AI Model (20MB one-time) ${Math.round(pct * 100)}%`);
-          }
-        });
-      }
-
       // Phase 2: Analyze image
       setAiPhase('analyzing');
       setProgressLabel('Analyzing image...');
