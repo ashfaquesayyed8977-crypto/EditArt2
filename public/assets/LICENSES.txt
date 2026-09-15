@@ -1,0 +1,7 @@
+Image Assets License Information
+================================
+
+Pexels Photos (CC0 - Free for commercial use, no attribution required)
+Source: https://www.pexels.com
+
+Real-ESRGAN BSD 3-Clause License - Free commercial - https://github.com/xinntao/Real-ESRGAN
