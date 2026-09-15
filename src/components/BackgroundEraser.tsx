@@ -374,15 +374,30 @@ export default function BackgroundEraser({ onBack }: Props) {
         tempCtx.drawImage(resultImg, 0, 0, mask.width, mask.height);
         const tempData = tempCtx.getImageData(0, 0, mask.width, mask.height);
 
-        // Build mask: alpha channel from AI result becomes our mask alpha
+        // Build mask from AI result alpha
         const maskData = ctx.createImageData(mask.width, mask.height);
+
+        let visiblePixels = 0;
+
         for (let i = 0; i < tempData.data.length; i += 4) {
-          maskData.data[i] = 0;
-          maskData.data[i + 1] = 0;
-          maskData.data[i + 2] = 0;
-          maskData.data[i + 3] = tempData.data[i + 3];
-        }
-        ctx.putImageData(maskData, 0, 0);
+        const alpha = tempData.data[i + 3];
+
+        maskData.data[i] = 0;
+        maskData.data[i + 1] = 0;
+        maskData.data[i + 2] = 0;
+        maskData.data[i + 3] = alpha;
+
+       if (alpha > 10) {
+       visiblePixels++;
+     }
+   }
+
+     // Safety check: never replace the whole photo with an empty mask
+    if (visiblePixels === 0) {
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fillRect(0, 0, mask.width, mask.height);
+   } else {
+  ctx.putImageData(maskData, 0, 0);
         pushHistory();
       }
 
