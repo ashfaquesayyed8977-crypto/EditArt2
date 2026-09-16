@@ -13,7 +13,7 @@
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
     "@supabase/supabase-js": "^2.57.4",
-    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs": "^4.11.0"
     "@upscalerjs/esrgan-medium": "^1.0.0",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
