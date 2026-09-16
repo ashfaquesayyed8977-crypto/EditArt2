@@ -18,6 +18,7 @@ import {
   EnhanceError,
   type EnhanceResult,
 } from '../aiEnhancer';
+import { upscaleImage } from '../hdUpscaler';
 import { fileToDataURL, loadImage, canvasToBlob, downloadBlob } from '../canvasUtils';
 
 type Stage = 'select' | 'preview' | 'processing' | 'result' | 'error';
@@ -55,38 +56,73 @@ export default function AIEnhancer({ onBack }: Props) {
   };
 
   const runEnhance = async (mode: 'auto' | 'hd') => {
-    if (!originalBlob) return;
-    setStage('processing');
-    setErrorMsg('');
-    setActiveMode(mode);
-    setProcessingLabel(mode === 'hd' ? 'Enhancing to 4K HD...' : 'Auto enhancing...');
-    const controller = new AbortController();
-    abortRef.current = controller;
+  if (!originalBlob) return;
 
-    try {
+  setStage('processing');
+  setErrorMsg('');
+  setActiveMode(mode);
+
+  const controller = new AbortController();
+  abortRef.current = controller;
+
+  try {
+    if (mode === 'hd') {
+      setProcessingLabel('Upscaling photo with HD Ultra...');
+
+      const image = await loadImage(originalUrl);
+
+      if (controller.signal.aborted) {
+        throw new DOMException('Enhancement was cancelled.', 'AbortError');
+      }
+
+      const upscaledCanvas = await upscaleImage(image);
+
+      if (controller.signal.aborted) {
+        throw new DOMException('Enhancement was cancelled.', 'AbortError');
+      }
+
+      const blob = await canvasToBlob(upscaledCanvas, 'image/jpeg', 0.95);
+      const url = URL.createObjectURL(blob);
+
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+
+      setResultUrl(url);
+      setResultBlob(blob);
+    } else {
+      setProcessingLabel('Auto enhancing...');
+
       const result: EnhanceResult = await enhanceImage(originalBlob, {
-        mode,
+        mode: 'auto',
         intensity,
         signal: controller.signal,
       });
+
       if (resultUrl) URL.revokeObjectURL(resultUrl);
+
       setResultUrl(result.url);
       setResultBlob(result.blob);
-      setSliderPos(50);
-      setStage('result');
-    } catch (err) {
-      if (err instanceof EnhanceError) {
-        setErrorMsg(err.message);
-      } else if (err instanceof DOMException && err.name === 'AbortError') {
-        setErrorMsg('Enhancement was cancelled.');
-      } else {
-        setErrorMsg('An unexpected error occurred during enhancement.');
-      }
-      setStage('error');
-    } finally {
-      abortRef.current = null;
     }
-  };
+
+    setSliderPos(50);
+    setStage('result');
+  } catch (err) {
+    if (err instanceof EnhanceError) {
+      setErrorMsg(err.message);
+    } else if (err instanceof DOMException && err.name === 'AbortError') {
+      setErrorMsg('Enhancement was cancelled.');
+    } else {
+      setErrorMsg(
+        mode === 'hd'
+          ? 'HD Ultra upscaling failed. Please try again.'
+          : 'An unexpected error occurred during enhancement.'
+      );
+    }
+
+    setStage('error');
+  } finally {
+    abortRef.current = null;
+  }
+};
 
   const cancelProcessing = () => {
     abortRef.current?.abort();
