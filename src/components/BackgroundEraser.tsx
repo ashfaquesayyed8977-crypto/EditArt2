@@ -400,7 +400,7 @@ export default function BackgroundEraser({ onBack }: Props) {
   ctx.putImageData(maskData, 0, 0);
         pushHistory();
       }
-
+      }
       setHasAIBeenRun(true);
       setAiPhase('done');
       setProgressLabel(result.method === 'fallback' ? 'Background removed (basic mode)' : 'Background Removed');
