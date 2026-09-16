@@ -1,8 +1,9 @@
+
 import Upscaler from 'upscaler';
-import x2 from '@upscalerjs/esrgan-medium/2x';
+import esrgan2x from '@upscalerjs/esrgan-medium/2x';
 
 const upscaler = new Upscaler({
-  model: x2,
+  model: esrgan2x,
 });
 
 export async function upscaleImage(
