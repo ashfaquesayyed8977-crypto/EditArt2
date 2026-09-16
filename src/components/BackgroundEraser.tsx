@@ -412,7 +412,6 @@ export default function BackgroundEraser({ onBack }: Props) {
           setErrorMsg('AI model is blocked in this preview environment. The basic color-difference method was used instead. For perfect results, use the Manual Eraser tools, or build the APK where the full AI model runs 100% offline.');
           setStage('error');
         }, 100);
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred during background removal.';
       if (msg.includes('transferable') || msg.includes('Worker') || msg.includes('postMessage')) {
