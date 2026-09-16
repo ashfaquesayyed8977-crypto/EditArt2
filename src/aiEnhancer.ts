@@ -1,6 +1,6 @@
 import { loadImageFromBlob, canvasToBlob } from './canvasUtils';
 
-export type EnhanceMode = 'auto' | 'more' | 'hd';
+export type EnhanceMode = 'auto' | 'more' ;
 
 export interface EnhanceOptions {
   mode: EnhanceMode;
@@ -24,7 +24,6 @@ export class EnhanceError extends Error {
 
 export const ENHANCE_MODES: { id: EnhanceMode; label: string; description: string }[] = [
   { id: 'auto', label: 'Auto Enhance', description: 'One-tap full pipeline' },
-  { id: 'hd', label: 'HD Ultra', description: '4x Ultra HD upscaling — best quality' },
 ];
 
 interface PipelineParams {
