@@ -23,8 +23,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android Licenses
+        run: yes | sdkmanager --licenses || true
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Build Debug APK
