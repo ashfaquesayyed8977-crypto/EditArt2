@@ -26,7 +26,7 @@ jobs:
       - name: Accept Android Licenses
         run: yes | sdkmanager --licenses || true
       - name: Sync Capacitor
-        run: npx cap sync android
+        run: npx @capacitor/cli sync android
       - name: Build Debug APK
         working-directory: android
         run: |
