@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EditArt</string>
+    <string name="title_activity_main">EditArt</string>
+    <string name="package_name">com.editart.app</string>
+    <string name="custom_url_scheme">com.editart.app</string>
+</resources>
