@@ -1,71 +1,31 @@
-export type ExportFormat = 'png' | 'jpeg' | 'webp';
-export type ExportQuality = 'low' | 'medium' | 'high' | 'maximum';
+export const canvasToBlob = (canvas: HTMLCanvasElement, type: string = 'image/png', quality?: number): Promise<Blob | null> => {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+};
 
-export function getQualityValue(quality: ExportQuality): number {
+export const getQualityValue = (quality: string | number): number => {
+  if (typeof quality === 'number') return quality;
   switch (quality) {
-    case 'low':
-      return 0.5;
-    case 'medium':
-      return 0.75;
-    case 'high':
-      return 0.9;
-    case 'maximum':
-      return 1.0;
-    default:
-      return 0.92;
+    case 'low': return 0.5;
+    case 'medium': return 0.8;
+    case 'high': return 0.92;
+    case 'maximum': return 1.0;
+    default: return 0.92;
   }
-}
+};
 
-export function getMimeType(format: ExportFormat): string {
+export const getMimeType = (format: string): string => {
   switch (format) {
-    case 'png':
-      return 'image/png';
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'webp':
-      return 'image/webp';
-    default:
-      return 'image/png';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    case 'webp': return 'image/webp';
+    default: return 'image/png';
   }
-}
+};
 
-export function fileToDataURL(file: File | Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-export function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-export function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type = 'image/png',
-  quality = 1.0
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Canvas export failed'));
-      },
-      type,
-      quality
-    );
-  });
-}
-
-export function downloadBlob(blob: Blob, filename: string): void {
+export const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -73,33 +33,47 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+  URL.revokeObjectURL(url);
+};
 
-export function cloneCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = source.width;
-  canvas.height = source.height;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.drawImage(source, 0, 0);
-  }
-  return canvas;
-}
+export const fileToDataURL = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
-export function resizeCanvas(
-  source: HTMLCanvasElement,
-  targetWidth: number,
-  targetHeight: number
-): HTMLCanvasElement {
+export const loadImage = (src: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+};
+
+export const loadImageFromBlob = (blob: Blob): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
+    img.src = url;
+  });
+};
+
+export const createCanvas = (width: number, height: number): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
-  }
+  canvas.width = width;
+  canvas.height = height;
   return canvas;
-}
+};
