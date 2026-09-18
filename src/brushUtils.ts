@@ -3,6 +3,20 @@ export interface BrushPoint {
   y: number;
 }
 
+function toRgba(color: string, alpha: number = 1): string {
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  if (color.startsWith('rgb')) {
+    const parts = color.match(/\d+/g)?.slice(0, 3).join(',') || '0,0,0';
+    return `rgba(${parts},${alpha})`;
+  }
+  return color;
+}
+
 export function drawSoftCircle(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -11,18 +25,17 @@ export function drawSoftCircle(
   hardness: number,
   fillStyle: string | CanvasGradient
 ): void {
-  if (hardness >= 1) {
-    ctx.fillStyle = fillStyle;
+  if (hardness >= 0.95 || typeof fillStyle !== 'string') {
+    ctx.fillStyle = fillStyle as any;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
-  const grad = ctx.createRadialGradient(cx, cy, radius * hardness, cx, cy, radius);
-  if (typeof fillStyle === 'string') {
-    grad.addColorStop(0, fillStyle);
-    grad.addColorStop(1, fillStyle.replace(/[\d.]+\)$/, '0)'));
-  }
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  grad.addColorStop(0, toRgba(fillStyle as string, 1));
+  grad.addColorStop(hardness, toRgba(fillStyle as string, 1));
+  grad.addColorStop(1, toRgba(fillStyle as string, 0));
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -41,7 +54,7 @@ export function strokeBetween(
   ctx.save();
   ctx.globalAlpha = opacity;
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
-  const steps = Math.max(1, Math.ceil(dist / (radius * 0.3)));
+  const steps = Math.max(1, Math.ceil(dist / (radius * 0.5)));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const x = from.x + (to.x - from.x) * t;
@@ -71,43 +84,27 @@ export function restoreStroke(
   radius: number,
   hardness: number
 ): void {
-  ctx.save();
-  ctx.globalCompositeOperation = 'destination-out';
-  // To restore, we need the original mask inverted; handled by caller via snapshot
-  strokeBetween(ctx, from, to, radius, hardness, 'rgba(0,0,0,1)', 1);
-  ctx.restore();
+  // Restore = Erase on mask
+  eraseStroke(ctx, from, to, radius, hardness);
 }
 
+// Clone aur Heal ko simple rakha hai, ab lag nahi karega
 export function cloneStroke(
   ctx: CanvasRenderingContext2D,
   sourceCanvas: HTMLCanvasElement,
   sourcePoint: BrushPoint,
   destPoint: BrushPoint,
-  radius: number,
-  hardness: number
+  radius: number
 ): void {
   ctx.save();
-  const dx = destPoint.x - sourcePoint.x;
-  const dy = destPoint.y - sourcePoint.y;
-  const dist = Math.hypot(dx, dy);
-  const steps = Math.max(1, Math.ceil(dist / (radius * 0.3)));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const sx = sourcePoint.x + dx * t;
-    const sy = sourcePoint.y + dy * t;
-    const dpx = destPoint.x + dx * t;
-    const dpy = destPoint.y + dy * t;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(dpx, dpy, radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(
-      sourceCanvas,
-      sx - radius, sy - radius, radius * 2, radius * 2,
-      dpx - radius, dpy - radius, radius * 2, radius * 2
-    );
-    ctx.restore();
-  }
+  ctx.beginPath();
+  ctx.arc(destPoint.x, destPoint.y, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(
+    sourceCanvas,
+    sourcePoint.x - radius, sourcePoint.y - radius, radius * 2, radius * 2,
+    destPoint.x - radius, destPoint.y - radius, radius * 2, radius * 2
+  );
   ctx.restore();
 }
 
@@ -119,74 +116,13 @@ export function healStroke(
   intensity: number
 ): void {
   const r = Math.max(2, radius);
-  const cx = Math.round(point.x);
-  const cy = Math.round(point.y);
-  const sx = Math.max(0, cx - r);
-  const sy = Math.max(0, cy - r);
-  const sw = Math.min(canvas.width - sx, r * 2);
-  const sh = Math.min(canvas.height - sy, r * 2);
-  if (sw <= 0 || sh <= 0) return;
-
-  const ringR = r * 2;
-  const ringSx = Math.max(0, cx - ringR);
-  const ringSy = Math.max(0, cy - ringR);
-  const ringSw = Math.min(canvas.width - ringSx, ringR * 2);
-  const ringSh = Math.min(canvas.height - ringSy, ringR * 2);
-  if (ringSw <= 0 || ringSh <= 0) return;
-
-  const ringCanvas = document.createElement('canvas');
-  ringCanvas.width = ringSw;
-  ringCanvas.height = ringSh;
-  const ringCtx = ringCanvas.getContext('2d')!;
-  ringCtx.drawImage(canvas, ringSx, ringSy, ringSw, ringSh, 0, 0, ringSw, ringSh);
-
-  ringCtx.save();
-  ringCtx.globalCompositeOperation = 'destination-out';
-  ringCtx.beginPath();
-  ringCtx.arc(cx - ringSx, cy - ringSy, r, 0, Math.PI * 2);
-  ringCtx.fill();
-  ringCtx.restore();
-
-  const samplePoints: BrushPoint[] = [];
-  const numSamples = 8;
-  for (let i = 0; i < numSamples; i++) {
-    const angle = (i / numSamples) * Math.PI * 2;
-    const px = cx - ringSx + Math.cos(angle) * r * 1.5;
-    const py = cy - ringSy + Math.sin(angle) * r * 1.5;
-    if (px >= 0 && px < ringSw && py >= 0 && py < ringSh) {
-      samplePoints.push({ x: px, y: py });
-    }
-  }
-  if (samplePoints.length === 0) return;
-
-  let avgR = 0, avgG = 0, avgB = 0, count = 0;
-  const ringData = ringCtx.getImageData(0, 0, ringSw, ringSh);
-  for (const sp of samplePoints) {
-    const idx = (Math.floor(sp.y) * ringSw + Math.floor(sp.x)) * 4;
-    if (idx + 3 < ringData.data.length) {
-      avgR += ringData.data[idx];
-      avgG += ringData.data[idx + 1];
-      avgB += ringData.data[idx + 2];
-      count++;
-    }
-  }
-  if (count === 0) return;
-  avgR /= count; avgG /= count; avgB /= count;
-
-  const blurred = document.createElement('canvas');
-  blurred.width = sw;
-  blurred.height = sh;
-  const bCtx = blurred.getContext('2d')!;
-  bCtx.filter = `blur(${Math.max(1, r / 3)}px)`;
-  bCtx.drawImage(ringCanvas, 0, 0, ringSw, ringSh, 0, 0, sw, sh);
-  bCtx.filter = 'none';
-
   ctx.save();
   ctx.globalAlpha = Math.max(0.1, Math.min(1, intensity / 100));
+  ctx.filter = `blur(${r / 3}px)`;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
   ctx.clip();
-  ctx.drawImage(blurred, 0, 0, sw, sh, sx, sy, sw, sh);
+  ctx.drawImage(canvas, 0, 0);
   ctx.restore();
 }
 
@@ -201,4 +137,4 @@ export function getCanvasPos(
     x: (e.clientX - rect.left) * scaleX,
     y: (e.clientY - rect.top) * scaleY,
   };
-}
+  }
