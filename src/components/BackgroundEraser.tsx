@@ -831,19 +831,10 @@ if (mask) {
             {/* Canvas Stage */}
             <div className="flex-1 flex items-center justify-center min-h-0 relative overflow-hidden rounded-2xl bg-neutral-900/60 border border-neutral-800/60">
               <div
-                className="relative rounded-xl overflow-hidden shadow-2xl"
+                className="w-full h-full flex items-center justify-center p-2 bg-transparent"
                 style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transition: isPanning ? 'none' : 'transform 0.12s ease-out',
-                  transformOrigin: 'center',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  backgroundImage:
-                    bgMode === 'transparent'
-                      ? 'linear-gradient(45deg, #1c1c1c 25%, transparent 25%), linear-gradient(-45deg, #1c1c1c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1c1c1c 75%), linear-gradient(-45deg, transparent 75%, #1c1c1c 75%)'
-                      : 'none',
-                  backgroundSize: '16px 16px',
-                  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                  transformOrigin: 'center center',
                 }}
               >
                 <canvas
@@ -851,27 +842,24 @@ if (mask) {
                   width={imgSize.w || 300}
                   height={imgSize.h || 150}
                   onPointerDown={(e) => {
-                    if (stage === 'processing') return;
                     if (activeTool === 'magic') handleMagicTap(e);
                     else handlePointerDown(e);
                   }}
-                  onPointerMove={(e) => {
-                    if (stage === 'processing') return;
-                    handlePointerMove(e);
-                  }}
-                  onPointerUp={(e) => {
-                    if (stage === 'processing') return;
-                    handlePointerUp(e);
-                  }}
-                  className="block"
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  className="block rounded-xl shadow-2xl max-w-full"
                   style={{
-                    maxWidth: '100%',
-                    maxHeight: 'calc(100dvh - 300px)',
+                    maxHeight: '58vh',
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
-                    cursor: stage === 'processing' ? 'wait' : cursorForTool(),
+                    cursor: cursorForTool(),
                     touchAction: 'none',
+                    backgroundImage:
+                      bgMode === 'transparent'
+                        ? 'linear-gradient(45deg, #1c1c1c 25%, transparent 25%), linear-gradient(-45deg, #1c1c1c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1c1c1c 75%), linear-gradient(-45deg, transparent 75%, #1c1c1c 75%)'
+                        : 'none',
+                    backgroundSize: '16px 16px',
                   }}
                 />
               </div>
