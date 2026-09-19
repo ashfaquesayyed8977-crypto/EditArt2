@@ -210,12 +210,23 @@ async function performSmartBackgroundRemoval(
 
     onProgress('Background removed successfully', 1);
 
-    return ctx.getImageData(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
+    const aiMask = result.mask;
+
+const maskData = new ImageData(
+  aiMask.width,
+  aiMask.height
+);
+
+for (let i = 0; i < aiMask.data.length; i += 4) {
+  const value = aiMask.data[i];
+
+  maskData.data[i] = 0;
+  maskData.data[i + 1] = 0;
+  maskData.data[i + 2] = 0;
+  maskData.data[i + 3] = value;
+}
+
+return maskData;
   } finally {
     URL.revokeObjectURL(resultUrl);
     result.cleanup();
