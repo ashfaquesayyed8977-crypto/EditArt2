@@ -167,8 +167,6 @@ async function performSmartBackgroundRemoval(
 
   const result = await removeBackground(imageBlob, {
     model: 'u2netp',
-
-    // Vercel/browser Worker issue avoid karne ke liye
     useWorker: false,
 
     onProgress: (info: any) => {
@@ -177,20 +175,106 @@ async function performSmartBackgroundRemoval(
         info?.message ?? 'Processing image...'
       );
 
-      onProgress(message, progress / 100);
+      onProgress(
+        message,
+        Math.max(0, Math.min(1, progress / 100))
+      );
     },
   });
 
   onProgress('Creating transparent cutout...', 0.95);
 
-  const resultUrl = URL.createObjectURL(result.transparentBlob);
+  const width = img.naturalWidth;
+  const height = img.naturalHeight;
+
+  /*
+   * IMPORTANT:
+   * AI mask may have different dimensions than
+   * the original image. Always normalize it.
+   */
+
+  if (result.mask instanceof ImageData) {
+    const sourceMask = document.createElement('canvas');
+
+    sourceMask.width = result.mask.width;
+    sourceMask.height = result.mask.height;
+
+    const sourceCtx = sourceMask.getContext('2d');
+
+    if (!sourceCtx) {
+      throw new Error('Unable to create source mask canvas.');
+    }
+
+    sourceCtx.putImageData(result.mask, 0, 0);
+
+    /*
+     * If dimensions already match, return directly.
+     */
+    if (
+      result.mask.width === width &&
+      result.mask.height === height
+    ) {
+      onProgress('Background removed successfully', 1);
+      return result.mask;
+    }
+
+    /*
+     * Resize AI mask to ORIGINAL IMAGE dimensions.
+     */
+    const finalMask = document.createElement('canvas');
+
+    finalMask.width = width;
+    finalMask.height = height;
+
+    const finalCtx = finalMask.getContext('2d');
+
+    if (!finalCtx) {
+      throw new Error('Unable to create final mask canvas.');
+    }
+
+    finalCtx.clearRect(0, 0, width, height);
+
+    finalCtx.imageSmoothingEnabled = true;
+
+    finalCtx.drawImage(
+      sourceMask,
+      0,
+      0,
+      sourceMask.width,
+      sourceMask.height,
+      0,
+      0,
+      width,
+      height
+    );
+
+    const normalizedMask = finalCtx.getImageData(
+      0,
+      0,
+      width,
+      height
+    );
+
+    onProgress('Background removed successfully', 1);
+
+    return normalizedMask;
+  }
+
+  /*
+   * Fallback:
+   * Create mask from transparent PNG alpha.
+   */
+  const resultUrl = URL.createObjectURL(
+    result.transparentBlob
+  );
 
   try {
     const resultImg = await loadImage(resultUrl);
 
     const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+
+    canvas.width = width;
+    canvas.height = height;
 
     const ctx = canvas.getContext('2d');
 
@@ -198,39 +282,57 @@ async function performSmartBackgroundRemoval(
       throw new Error('Unable to create canvas context.');
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, width, height);
 
     ctx.drawImage(
       resultImg,
       0,
       0,
-      canvas.width,
-      canvas.height
+      resultImg.naturalWidth,
+      resultImg.naturalHeight,
+      0,
+      0,
+      width,
+      height
     );
 
-    onProgress('Background removed successfully', 1);
+    const cutoutData = ctx.getImageData(
+      0,
+      0,
+      width,
+      height
+    );
 
-    const aiMask = result.mask;
+    const maskData = new ImageData(
+      width,
+      height
+    );
 
-const canvas = document.createElement('canvas');
-canvas.width = img.naturalWidth;
-canvas.height = img.naturalHeight;
-const ctx = canvas.getContext('2d')!;
-ctx.clearRect(0,0,canvas.width, canvas.height);
-ctx.drawImage(resultImg, 0, 0, canvas.width, canvas.height);
-const cutoutData = ctx.getImageData(0,0,canvas.width, canvas.height);
+    for (
+      let i = 0;
+      i < cutoutData.data.length;
+      i += 4
+    ) {
+      maskData.data[i] = 0;
+      maskData.data[i + 1] = 0;
+      maskData.data[i + 2] = 0;
 
-const maskData = new ImageData(canvas.width, canvas.height);
-for (let i = 0; i < cutoutData.data.length; i += 4) {
-  maskData.data[i] = 0;
-  maskData.data[i+1] = 0;
-  maskData.data[i+2] = 0;
-  maskData.data[i+3] = cutoutData.data[i+3]; // alpha from real cutout
-}
-return maskData;
+      maskData.data[i + 3] =
+        cutoutData.data[i + 3];
+    }
+
+    onProgress(
+      'Background removed successfully',
+      1
+    );
+
+    return maskData;
   } finally {
     URL.revokeObjectURL(resultUrl);
-    result.cleanup();
+
+    if (result.cleanup) {
+      result.cleanup();
+    }
   }
 }
 
@@ -615,11 +717,35 @@ export default function BackgroundEraser({ onBack }: Props) {
       });
 
       const mask = maskCanvasRef.current;
-      if (mask) {
-        const ctx = mask.getContext('2d')!;
-        ctx.putImageData(maskImageData, 0, 0);
-        pushHistory();
-      }
+
+if (mask) {
+  const ctx = mask.getContext('2d')!;
+
+  // Safety check: AI mask must match original canvas
+  if (
+    maskImageData.width !== mask.width ||
+    maskImageData.height !== mask.height
+  ) {
+    throw new Error(
+      `AI mask size mismatch: ${maskImageData.width}x${maskImageData.height} instead of ${mask.width}x${mask.height}`
+    );
+  }
+
+  ctx.clearRect(
+    0,
+    0,
+    mask.width,
+    mask.height
+  );
+
+  ctx.putImageData(
+    maskImageData,
+    0,
+    0
+  );
+
+  pushHistory();
+}
 
       setHasAIBeenRun(true);
       setStage('edit');
