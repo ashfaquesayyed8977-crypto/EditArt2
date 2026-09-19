@@ -212,20 +212,21 @@ async function performSmartBackgroundRemoval(
 
     const aiMask = result.mask;
 
-const maskData = new ImageData(
-  aiMask.width,
-  aiMask.height
-);
+const canvas = document.createElement('canvas');
+canvas.width = img.naturalWidth;
+canvas.height = img.naturalHeight;
+const ctx = canvas.getContext('2d')!;
+ctx.clearRect(0,0,canvas.width, canvas.height);
+ctx.drawImage(resultImg, 0, 0, canvas.width, canvas.height);
+const cutoutData = ctx.getImageData(0,0,canvas.width, canvas.height);
 
-for (let i = 0; i < aiMask.data.length; i += 4) {
-  const value = aiMask.data[i];
-
+const maskData = new ImageData(canvas.width, canvas.height);
+for (let i = 0; i < cutoutData.data.length; i += 4) {
   maskData.data[i] = 0;
-  maskData.data[i + 1] = 0;
-  maskData.data[i + 2] = 0;
-  maskData.data[i + 3] = value;
+  maskData.data[i+1] = 0;
+  maskData.data[i+2] = 0;
+  maskData.data[i+3] = cutoutData.data[i+3]; // alpha from real cutout
 }
-
 return maskData;
   } finally {
     URL.revokeObjectURL(resultUrl);
@@ -360,7 +361,7 @@ export default function BackgroundEraser({ onBack }: Props) {
     maskCanvas.width = img.naturalWidth;
     maskCanvas.height = img.naturalHeight;
     const maskCtx = maskCanvas.getContext('2d')!;
-    maskCtx.fillStyle = 'rgba(0,0,0,1)';
+    maskCtx.fillStyle = '#000000';
     maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
     maskCanvasRef.current = maskCanvas;
 
