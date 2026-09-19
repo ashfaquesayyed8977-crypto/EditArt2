@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { removeBackground } from '../lib/background-removal';
 import {
   ArrowLeft,
   Upload,
@@ -161,111 +162,56 @@ async function performSmartBackgroundRemoval(
   img: HTMLImageElement,
   onProgress: (phase: string, progress: number) => void
 ): Promise<ImageData> {
-  onProgress('Analyzing image composition...', 0.2);
-  await new Promise((r) => setTimeout(r, 60));
+  onProgress('Loading local AI model...', 0.05);
 
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
+  const response = await fetch(img.src);
+  const imageBlob = await response.blob();
 
-  // Process at optimal resolution for fast calculation, then project onto full size
-  const maxDim = 640;
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const sw = Math.round(w * scale);
-  const sh = Math.round(h * scale);
+  const result = await removeBackground(imageBlob, {
+    model: 'u2netp',
+    onProgress: (key: string, current: number, total: number) => {
+      const progress = total > 0 ? current / total : 0;
 
-  const canvas = document.createElement('canvas');
-  canvas.width = sw;
-  canvas.height = sh;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0, sw, sh);
-  const src = ctx.getImageData(0, 0, sw, sh);
-  const d = src.data;
-
-  onProgress('Segmenting foreground & backdrop...', 0.5);
-  await new Promise((r) => setTimeout(r, 60));
-
-  // Sample border pixels to model background color distribution
-  const bgSamples: number[][] = [];
-  const step = Math.max(1, Math.floor(sw / 40));
-
-  for (let x = 0; x < sw; x += step) {
-    const top = (0 * sw + x) * 4;
-    const bot = ((sh - 1) * sw + x) * 4;
-    bgSamples.push([d[top], d[top + 1], d[top + 2]]);
-    bgSamples.push([d[bot], d[bot + 1], d[bot + 2]]);
-  }
-  for (let y = 0; y < sh; y += step) {
-    const left = (y * sw + 0) * 4;
-    const right = (y * sw + (sw - 1)) * 4;
-    bgSamples.push([d[left], d[left + 1], d[left + 2]]);
-    bgSamples.push([d[right], d[right + 1], d[right + 2]]);
-  }
-
-  const alphaMask = new Uint8Array(sw * sh);
-  const centerX = sw / 2;
-  const centerY = sh / 2;
-  const maxDist = Math.hypot(centerX, centerY);
-
-  for (let y = 0; y < sh; y++) {
-    for (let x = 0; x < sw; x++) {
-      const idx = (y * sw + x) * 4;
-      const r = d[idx];
-      const g = d[idx + 1];
-      const b = d[idx + 2];
-
-      // Minimum color distance to any sampled background tone
-      let minDiff = Infinity;
-      for (let s = 0; s < bgSamples.length; s++) {
-        const sr = bgSamples[s][0];
-        const sg = bgSamples[s][1];
-        const sb = bgSamples[s][2];
-        const diff = Math.hypot(r - sr, g - sg, b - sb);
-        if (diff < minDiff) minDiff = diff;
+      if (key.toLowerCase().includes('model')) {
+        onProgress('Loading AI model...', Math.min(0.25, progress * 0.25));
+      } else if (key.toLowerCase().includes('process')) {
+        onProgress('Removing background...', 0.25 + progress * 0.65);
+      } else {
+        onProgress('Processing image...', 0.25 + progress * 0.65);
       }
+    },
+  });
 
-      // Center prior: subjects are usually towards the center of the frame
-      const distFromCenter = Math.hypot(x - centerX, y - centerY) / maxDist;
-      const threshold = 32 - distFromCenter * 10;
+  onProgress('Creating transparent cutout...', 0.95);
 
-      let alpha = 255;
-      if (minDiff < threshold) {
-        alpha = Math.max(0, Math.min(255, Math.round(((minDiff - 10) / (threshold - 10)) * 255)));
-      }
+  const resultUrl = URL.createObjectURL(result);
 
-      alphaMask[y * sw + x] = alpha;
+  try {
+    const resultImg = await loadImage(resultUrl);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Unable to create canvas context.');
     }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(resultImg, 0, 0, canvas.width, canvas.height);
+
+    onProgress('Background removed successfully', 1);
+
+    return ctx.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+  } finally {
+    URL.revokeObjectURL(resultUrl);
   }
-
-  onProgress('Refining edge contours & matting...', 0.8);
-  await new Promise((r) => setTimeout(r, 60));
-
-  // Upscale mask back to full image dimensions
-  const maskCanvas = document.createElement('canvas');
-  maskCanvas.width = sw;
-  maskCanvas.height = sh;
-  const mCtx = maskCanvas.getContext('2d')!;
-  const mData = mCtx.createImageData(sw, sh);
-
-  for (let i = 0; i < alphaMask.length; i++) {
-    const a = alphaMask[i];
-    mData.data[i * 4] = 0;
-    mData.data[i * 4 + 1] = 0;
-    mData.data[i * 4 + 2] = 0;
-    mData.data[i * 4 + 3] = a;
-  }
-  mCtx.putImageData(mData, 0, 0);
-
-  // Full-sized canvas interpolation
-  const finalMaskCanvas = document.createElement('canvas');
-  finalMaskCanvas.width = w;
-  finalMaskCanvas.height = h;
-  const fCtx = finalMaskCanvas.getContext('2d')!;
-  fCtx.imageSmoothingEnabled = true;
-  fCtx.imageSmoothingQuality = 'high';
-  fCtx.drawImage(maskCanvas, 0, 0, w, h);
-
-  onProgress('Finalizing transparent cutout...', 1.0);
-  return fCtx.getImageData(0, 0, w, h);
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
