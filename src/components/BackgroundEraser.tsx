@@ -162,31 +162,28 @@ async function performSmartBackgroundRemoval(
   img: HTMLImageElement,
   onProgress: (phase: string, progress: number) => void
 ): Promise<ImageData> {
-  onProgress('Loading local AI model...', 0.05);
-
   const response = await fetch(img.src);
   const imageBlob = await response.blob();
 
   const result = await removeBackground(imageBlob, {
     model: 'u2netp',
-    onProgress: (key: string, current: number, total: number) => {
-      const progress = total > 0 ? current / total : 0;
 
-      const progressKey = String(key);
+    // Vercel/browser Worker issue avoid karne ke liye
+    useWorker: false,
 
-if (progressKey.toLowerCase().includes('model')) {
-        onProgress('Loading AI model...', Math.min(0.25, progress * 0.25));
-      } else if (progressKey.toLowerCase().includes('process')) {
-        onProgress('Removing background...', 0.25 + progress * 0.65);
-      } else {
-        onProgress('Processing image...', 0.25 + progress * 0.65);
-      }
+    onProgress: (info: any) => {
+      const progress = Number(info?.progress ?? 0);
+      const message = String(
+        info?.message ?? 'Processing image...'
+      );
+
+      onProgress(message, progress / 100);
     },
   });
 
   onProgress('Creating transparent cutout...', 0.95);
 
-  const resultUrl = URL.createObjectURL(result);
+  const resultUrl = URL.createObjectURL(result.transparentBlob);
 
   try {
     const resultImg = await loadImage(resultUrl);
@@ -196,12 +193,20 @@ if (progressKey.toLowerCase().includes('model')) {
     canvas.height = img.naturalHeight;
 
     const ctx = canvas.getContext('2d');
+
     if (!ctx) {
       throw new Error('Unable to create canvas context.');
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(resultImg, 0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(
+      resultImg,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
 
     onProgress('Background removed successfully', 1);
 
@@ -213,6 +218,7 @@ if (progressKey.toLowerCase().includes('model')) {
     );
   } finally {
     URL.revokeObjectURL(resultUrl);
+    result.cleanup();
   }
 }
 
