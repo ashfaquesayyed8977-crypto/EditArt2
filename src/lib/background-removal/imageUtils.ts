@@ -203,7 +203,7 @@ function loadImageElement(source: ImageSource): Promise<HTMLImageElement> {
           fallbackImg.onerror = () => reject(new Error('Failed to decode image from Blob data'));
           fallbackImg.src = dataUrl;
           return;
-        } catch (e) {
+        } catch {
           // fall through
         }
       }

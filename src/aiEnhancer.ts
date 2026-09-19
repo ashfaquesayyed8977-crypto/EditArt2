@@ -1,6 +1,6 @@
 import { loadImageFromBlob, canvasToBlob } from './canvasUtils';
 
-export type EnhanceMode = 'auto' | 'more' ;
+export type EnhanceMode = 'auto' | 'more' | 'hd';
 
 export interface EnhanceOptions {
   mode: EnhanceMode;
@@ -334,6 +334,9 @@ export async function enhanceImage(
 
   const quality = mode === 'hd' ? 0.98 : 0.95;
   const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+  if (!blob) {
+    throw new EnhanceError('Failed to generate enhanced image.');
+  }
   const url = URL.createObjectURL(blob);
 
   return { blob, url, width: w, height: h };

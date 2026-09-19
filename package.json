@@ -1,10 +1,13 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "editart-photo-editor",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "copy:ort": "mkdir -p public/ort-wasm && cp -n node_modules/onnxruntime-web/dist/ort-wasm* public/ort-wasm/ 2>/dev/null || true",
+    "prebuild": "npm run copy:ort",
+    "postinstall": "npm run copy:ort",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

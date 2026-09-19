@@ -13,6 +13,7 @@ import {
   Pencil,
   Aperture,
   FlipHorizontal,
+  type LucideIcon,
 } from 'lucide-react';
 import type { ToolId } from '../types';
 
@@ -21,7 +22,7 @@ interface BottomToolbarProps {
   onToolSelect: (tool: ToolId) => void;
 }
 
-const TOOLS: { id: ToolId; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
+const TOOLS: { id: ToolId; label: string; icon: LucideIcon }[] = [
   { id: 'crop', label: 'Crop', icon: Crop },
   { id: 'flip', label: 'Flip', icon: FlipHorizontal },
   { id: 'effects', label: 'Effect', icon: Wand2 },

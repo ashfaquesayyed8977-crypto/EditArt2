@@ -19,9 +19,11 @@ export default function ExportPanel({ canvas, onClose }: ExportPanelProps) {
       const q = getQualityValue(quality);
       const type = getMimeType(format);
       const blob = await canvasToBlob(canvas, type, q);
-      const filename = `photo-studio-${Date.now()}.${format}`;
-      downloadBlob(blob, filename);
-      onClose();
+      if (blob) {
+        const filename = `photo-studio-${Date.now()}.${format}`;
+        downloadBlob(blob, filename);
+        onClose();
+      }
     } catch (err) {
       console.error('Export failed', err);
     } finally {

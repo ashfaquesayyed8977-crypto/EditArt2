@@ -168,17 +168,11 @@ async function performSmartBackgroundRemoval(
   const result = await removeBackground(imageBlob, {
     model: 'u2netp',
     useWorker: false,
-
+    preserveResolution: true,
     onProgress: (info: any) => {
       const progress = Number(info?.progress ?? 0);
-      const message = String(
-        info?.message ?? 'Processing image...'
-      );
-
-      onProgress(
-        message,
-        Math.max(0, Math.min(1, progress / 100))
-      );
+      const message = String(info?.message ?? 'Processing image...');
+      onProgress(message, Math.max(0, Math.min(1, progress / 100)));
     },
   });
 
@@ -187,153 +181,51 @@ async function performSmartBackgroundRemoval(
   const width = img.naturalWidth;
   const height = img.naturalHeight;
 
-  /*
-   * IMPORTANT:
-   * AI mask may have different dimensions than
-   * the original image. Always normalize it.
-   */
+  // result.mask is an ImageData with dimensions (result.width, result.height).
+  // The pixel values in result.mask.data are grayscale (R=G=B=maskByte, A=255).
+  // In BackgroundEraser, the mask canvas requires the foreground saliency in the ALPHA channel (R=G=B=0, A=maskByte)
+  // so that destination-in compositing, manual eraser (destination-out), restore (source-over),
+  // and magic wand correctly operate on the alpha matte.
+  const maskData = new ImageData(width, height);
 
-  if (result.mask instanceof ImageData) {
-    const sourceMask = document.createElement('canvas');
-
-    sourceMask.width = result.mask.width;
-    sourceMask.height = result.mask.height;
-
-    const sourceCtx = sourceMask.getContext('2d');
-
-    if (!sourceCtx) {
-      throw new Error('Unable to create source mask canvas.');
+  if (result.mask && result.mask.width === width && result.mask.height === height) {
+    const src = result.mask.data;
+    const dst = maskData.data;
+    const count = width * height;
+    for (let i = 0; i < count; i++) {
+      dst[i * 4 + 3] = src[i * 4];
     }
+  } else if (result.mask) {
+    // If mask dimensions differ from the natural image dimensions, resample with smooth interpolation
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = result.mask.width;
+    srcCanvas.height = result.mask.height;
+    const srcCtx = srcCanvas.getContext('2d')!;
+    srcCtx.putImageData(result.mask, 0, 0);
 
-    sourceCtx.putImageData(result.mask, 0, 0);
+    const dstCanvas = document.createElement('canvas');
+    dstCanvas.width = width;
+    dstCanvas.height = height;
+    const dstCtx = dstCanvas.getContext('2d')!;
+    dstCtx.imageSmoothingEnabled = true;
+    dstCtx.imageSmoothingQuality = 'high';
+    dstCtx.drawImage(srcCanvas, 0, 0, width, height);
 
-    /*
-     * If dimensions already match, return directly.
-     */
-    if (
-      result.mask.width === width &&
-      result.mask.height === height
-    ) {
-      onProgress('Background removed successfully', 1);
-      return result.mask;
-    }
-
-    /*
-     * Resize AI mask to ORIGINAL IMAGE dimensions.
-     */
-    const finalMask = document.createElement('canvas');
-
-    finalMask.width = width;
-    finalMask.height = height;
-
-    const finalCtx = finalMask.getContext('2d');
-
-    if (!finalCtx) {
-      throw new Error('Unable to create final mask canvas.');
-    }
-
-    finalCtx.clearRect(0, 0, width, height);
-
-    finalCtx.imageSmoothingEnabled = true;
-
-    finalCtx.drawImage(
-      sourceMask,
-      0,
-      0,
-      sourceMask.width,
-      sourceMask.height,
-      0,
-      0,
-      width,
-      height
-    );
-
-    const normalizedMask = finalCtx.getImageData(
-      0,
-      0,
-      width,
-      height
-    );
-
-    onProgress('Background removed successfully', 1);
-
-    return normalizedMask;
-  }
-
-  /*
-   * Fallback:
-   * Create mask from transparent PNG alpha.
-   */
-  const resultUrl = URL.createObjectURL(
-    result.transparentBlob
-  );
-
-  try {
-    const resultImg = await loadImage(resultUrl);
-
-    const canvas = document.createElement('canvas');
-
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) {
-      throw new Error('Unable to create canvas context.');
-    }
-
-    ctx.clearRect(0, 0, width, height);
-
-    ctx.drawImage(
-      resultImg,
-      0,
-      0,
-      resultImg.naturalWidth,
-      resultImg.naturalHeight,
-      0,
-      0,
-      width,
-      height
-    );
-
-    const cutoutData = ctx.getImageData(
-      0,
-      0,
-      width,
-      height
-    );
-
-    const maskData = new ImageData(
-      width,
-      height
-    );
-
-    for (
-      let i = 0;
-      i < cutoutData.data.length;
-      i += 4
-    ) {
-      maskData.data[i] = 0;
-      maskData.data[i + 1] = 0;
-      maskData.data[i + 2] = 0;
-
-      maskData.data[i + 3] =
-        cutoutData.data[i + 3];
-    }
-
-    onProgress(
-      'Background removed successfully',
-      1
-    );
-
-    return maskData;
-  } finally {
-    URL.revokeObjectURL(resultUrl);
-
-    if (result.cleanup) {
-      result.cleanup();
+    const scaled = dstCtx.getImageData(0, 0, width, height);
+    const src = scaled.data;
+    const dst = maskData.data;
+    const count = width * height;
+    for (let i = 0; i < count; i++) {
+      dst[i * 4 + 3] = src[i * 4];
     }
   }
+
+  if (result.cleanup) {
+    result.cleanup();
+  }
+
+  onProgress('Background removed successfully', 1);
+  return maskData;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -400,6 +292,11 @@ export default function BackgroundEraser({ onBack }: Props) {
     const mask = maskCanvasRef.current;
     const orig = originalCanvasRef.current;
     if (!display || !mask || !orig) return;
+
+    if (display.width !== orig.width || display.height !== orig.height) {
+      display.width = orig.width;
+      display.height = orig.height;
+    }
 
     const ctx = display.getContext('2d')!;
     ctx.clearRect(0, 0, display.width, display.height);
@@ -485,9 +382,9 @@ export default function BackgroundEraser({ onBack }: Props) {
   }, []);
 
   useEffect(() => {
-    if (stage === 'edit' && imgSize.w > 0 && !canvasReady) {
+    if ((stage === 'edit' || stage === 'processing') && imgSize.w > 0) {
       const display = displayCanvasRef.current;
-      if (display) {
+      if (display && (display.width !== imgSize.w || display.height !== imgSize.h || !canvasReady)) {
         display.width = imgSize.w;
         display.height = imgSize.h;
         renderDisplay();
@@ -501,6 +398,11 @@ export default function BackgroundEraser({ onBack }: Props) {
     const display = displayCanvasRef.current;
     const orig = originalCanvasRef.current;
     if (!display || !orig) return;
+
+    if (display.width !== orig.width || display.height !== orig.height) {
+      display.width = orig.width;
+      display.height = orig.height;
+    }
 
     if (showOriginal) {
       const ctx = display.getContext('2d')!;
@@ -749,6 +651,11 @@ if (mask) {
 
       setHasAIBeenRun(true);
       setStage('edit');
+      const display = displayCanvasRef.current;
+      if (display && (display.width !== originalImg.naturalWidth || display.height !== originalImg.naturalHeight)) {
+        display.width = originalImg.naturalWidth;
+        display.height = originalImg.naturalHeight;
+      }
       renderDisplay();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to complete automatic background removal.';
@@ -918,9 +825,9 @@ if (mask) {
           </div>
         )}
 
-        {/* Stage 2: Editor */}
-        {stage === 'edit' && (
-          <div className="flex-1 flex flex-col min-h-0 pt-2 animate-fade-in">
+        {/* Stage 2: Editor (retained during processing to prevent canvas destruction) */}
+        {(stage === 'edit' || stage === 'processing') && (
+          <div className="flex-1 flex flex-col min-h-0 pt-2 animate-fade-in relative">
             {/* Canvas Stage */}
             <div className="flex-1 flex items-center justify-center min-h-0 relative overflow-hidden rounded-2xl bg-neutral-900/60 border border-neutral-800/60">
               <div
@@ -941,12 +848,21 @@ if (mask) {
               >
                 <canvas
                   ref={displayCanvasRef}
+                  width={imgSize.w || 300}
+                  height={imgSize.h || 150}
                   onPointerDown={(e) => {
+                    if (stage === 'processing') return;
                     if (activeTool === 'magic') handleMagicTap(e);
                     else handlePointerDown(e);
                   }}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
+                  onPointerMove={(e) => {
+                    if (stage === 'processing') return;
+                    handlePointerMove(e);
+                  }}
+                  onPointerUp={(e) => {
+                    if (stage === 'processing') return;
+                    handlePointerUp(e);
+                  }}
                   className="block"
                   style={{
                     maxWidth: '100%',
@@ -954,27 +870,54 @@ if (mask) {
                     width: 'auto',
                     height: 'auto',
                     objectFit: 'contain',
-                    cursor: cursorForTool(),
+                    cursor: stage === 'processing' ? 'wait' : cursorForTool(),
                     touchAction: 'none',
                   }}
                 />
               </div>
 
               {/* Status Pill */}
-              {isPainting && (activeTool === 'manual' || activeTool === 'repair') && (
+              {isPainting && (activeTool === 'manual' || activeTool === 'repair') && stage === 'edit' && (
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur text-white text-[11px] font-medium pointer-events-none">
                   {activeTool === 'manual' ? 'Erasing' : 'Restoring'} • {brushSize}px
                 </div>
               )}
-              {activeTool === 'magic' && (
+              {activeTool === 'magic' && stage === 'edit' && (
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur text-rose-300 text-[11px] font-medium pointer-events-none">
                   Tap color to erase
                 </div>
               )}
+
+              {/* Processing Modal Overlay */}
+              {stage === 'processing' && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-5 px-6 bg-neutral-950/85 backdrop-blur-md animate-fade-in">
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full border-4 border-neutral-800 border-t-rose-500 animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Sparkles className="w-8 h-8 text-rose-400 animate-pulse" />
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <h2 className="text-base font-bold text-white mb-1">Removing Background</h2>
+                    <p className="text-neutral-400 text-xs">{progressLabel}</p>
+                  </div>
+
+                  <div className="w-60 h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-rose-500 to-pink-600 transition-all duration-200"
+                      style={{ width: `${Math.max(5, progressValue * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Context Tool Controls */}
-            <div className="shrink-0 pt-2 space-y-2">
+            {/* Context Tool Controls & Bottom Navigation */}
+            {stage === 'edit' && (
+              <>
+                {/* Context Tool Controls */}
+                <div className="shrink-0 pt-2 space-y-2">
               {/* Brush Sliders for Manual & Repair */}
               {(activeTool === 'manual' || activeTool === 'repair') && (
                 <div className="flex items-center gap-2 px-1">
@@ -1136,30 +1079,8 @@ if (mask) {
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Stage 3: Processing Animation */}
-        {stage === 'processing' && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 animate-fade-in">
-            <div className="relative">
-              <div className="w-20 h-20 rounded-full border-4 border-neutral-800 border-t-rose-500 animate-spin" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Sparkles className="w-8 h-8 text-rose-400 animate-pulse" />
-              </div>
-            </div>
-
-            <div className="text-center">
-              <h2 className="text-base font-bold text-white mb-1">Removing Background</h2>
-              <p className="text-neutral-400 text-xs">{progressLabel}</p>
-            </div>
-
-            <div className="w-60 h-1.5 rounded-full bg-neutral-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-rose-500 to-pink-600 transition-all duration-200"
-                style={{ width: `${Math.max(5, progressValue * 100)}%` }}
-              />
-            </div>
+              </>
+            )}
           </div>
         )}
 

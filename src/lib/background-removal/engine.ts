@@ -111,9 +111,6 @@ export async function removeBackground(
     throw new DOMException('Processing cancelled by user', 'AbortError');
   }
 
-  const origW = decoded.width;
-  const origH = decoded.height;
-
   const modelName = model === 'modnet'
     ? 'MODNet Portrait Matting (Apache-2.0)'
     : 'U²-Netp Universal Salient Object (Apache-2.0)';

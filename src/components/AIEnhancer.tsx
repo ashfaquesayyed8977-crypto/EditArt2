@@ -82,6 +82,9 @@ export default function AIEnhancer({ onBack }: Props) {
       }
 
       const blob = await canvasToBlob(upscaledCanvas, 'image/jpeg', 0.95);
+      if (!blob) {
+        throw new Error('Failed to create image from upscaled canvas');
+      }
       const url = URL.createObjectURL(blob);
 
       if (resultUrl) URL.revokeObjectURL(resultUrl);

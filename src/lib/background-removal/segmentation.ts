@@ -26,8 +26,10 @@ export async function configureOrtEnvironment(): Promise<void> {
 
   try {
     ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = false;
     ort.env.wasm.wasmPaths = {
       wasm: '/ort-wasm/ort-wasm-simd-threaded.wasm',
+      mjs: '/ort-wasm/ort-wasm-simd-threaded.mjs',
     };
 
     if (!ort.env.wasm.wasmBinary) {
@@ -35,9 +37,33 @@ export async function configureOrtEnvironment(): Promise<void> {
         wasmBinaryPromise = (async () => {
           try {
             const resp = await fetch('/ort-wasm/ort-wasm-simd-threaded.wasm');
-            if (resp.ok) {
+            const contentType = resp.headers.get('content-type') || '';
+            // Only accept if response is OK and not an HTML SPA fallback
+            if (resp.ok && !contentType.includes('text/html')) {
               const buffer = await resp.arrayBuffer();
-              ort.env.wasm.wasmBinary = new Uint8Array(buffer);
+              const bytes = new Uint8Array(buffer);
+              // Verify WASM magic word: \0asm (0x00, 0x61, 0x73, 0x6d)
+              if (
+                bytes.length >= 4 &&
+                bytes[0] === 0x00 &&
+                bytes[1] === 0x61 &&
+                bytes[2] === 0x73 &&
+                bytes[3] === 0x6d
+              ) {
+                ort.env.wasm.wasmBinary = bytes;
+              } else {
+                console.warn(
+                  '[BackgroundRemoval] Fetched file does not have WebAssembly magic header, falling back to wasmPaths'
+                );
+              }
+            } else {
+              console.warn(
+                '[BackgroundRemoval] Failed to fetch valid WASM binary (status: ' +
+                  resp.status +
+                  ', type: ' +
+                  contentType +
+                  '), relying on wasmPaths'
+              );
             }
           } catch (fetchErr) {
             console.warn('[BackgroundRemoval] Could not pre-fetch wasmBinary, relying on wasmPaths:', fetchErr);
@@ -205,7 +231,6 @@ export async function runInference(
 
   const outputData = outputTensor.data as Float32Array;
   const targetW = letterbox.targetWidth;
-  const targetH = letterbox.targetHeight;
 
   // Normalize raw saliency values:
   // For U2Net, map values to [0, 1] range using min-max normalization if necessary
