@@ -172,9 +172,11 @@ async function performSmartBackgroundRemoval(
     onProgress: (key: string, current: number, total: number) => {
       const progress = total > 0 ? current / total : 0;
 
-      if (key.toLowerCase().includes('model')) {
+      const progressKey = String(key);
+
+if (progressKey.toLowerCase().includes('model')) {
         onProgress('Loading AI model...', Math.min(0.25, progress * 0.25));
-      } else if (key.toLowerCase().includes('process')) {
+      } else if (progressKey.toLowerCase().includes('process')) {
         onProgress('Removing background...', 0.25 + progress * 0.65);
       } else {
         onProgress('Processing image...', 0.25 + progress * 0.65);
