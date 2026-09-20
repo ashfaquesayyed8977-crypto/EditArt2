@@ -15,6 +15,31 @@ import { LetterboxInfo } from './preprocess';
 const sessionCache = new Map<string, ort.InferenceSession>();
 let envConfigured = false;
 let wasmBinaryPromise: Promise<void> | null = null;
+let mjsBlobUrl: string | null = null;
+let mjsBlobPromise: Promise<string | null> | null = null;
+
+async function getMjsBlobUrl(): Promise<string | null> {
+  if (mjsBlobUrl) return mjsBlobUrl;
+  if (!mjsBlobPromise) {
+    mjsBlobPromise = (async () => {
+      try {
+        const resp = await fetch('/ort-wasm/ort-wasm-simd-threaded.mjs');
+        if (resp.ok) {
+          const text = await resp.text();
+          if (!text.trim().startsWith('<!DOCTYPE') && !text.trim().startsWith('<html')) {
+            const blob = new Blob([text], { type: 'application/javascript' });
+            mjsBlobUrl = URL.createObjectURL(blob);
+            return mjsBlobUrl;
+          }
+        }
+      } catch (err) {
+        console.warn('[BackgroundRemoval] Could not create mjs Blob URL:', err);
+      }
+      return null;
+    })();
+  }
+  return mjsBlobPromise;
+}
 
 /**
  * Configure ONNX Runtime Web environment safely for Web, Workers, and Capacitor WebViews.
@@ -27,10 +52,18 @@ export async function configureOrtEnvironment(): Promise<void> {
   try {
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = false;
-    ort.env.wasm.wasmPaths = {
-      wasm: '/ort-wasm/ort-wasm-simd-threaded.wasm',
-      mjs: '/ort-wasm/ort-wasm-simd-threaded.mjs',
-    };
+
+    const blobUrl = await getMjsBlobUrl();
+    if (blobUrl) {
+      ort.env.wasm.wasmPaths = {
+        wasm: '/ort-wasm/ort-wasm-simd-threaded.wasm',
+        mjs: blobUrl,
+      };
+    } else {
+      ort.env.wasm.wasmPaths = {
+        wasm: '/ort-wasm/ort-wasm-simd-threaded.wasm',
+      };
+    }
 
     if (!ort.env.wasm.wasmBinary) {
       if (!wasmBinaryPromise) {

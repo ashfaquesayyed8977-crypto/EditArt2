@@ -125,50 +125,21 @@ function floodFill(imageData: ImageData, startX: number, startY: number, toleran
 }
 
 /**
- * Feathering and edge anti-aliasing for smooth mask contours.
- */
-function featherMask(mask: Uint8Array, width: number, height: number, radius = 1): Float32Array {
-  const result = new Float32Array(width * height);
-  const r = Math.max(1, Math.round(radius));
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let sum = 0;
-      let count = 0;
-      for (let dy = -r; dy <= r; dy++) {
-        const ny = y + dy;
-        if (ny >= 0 && ny < height) {
-          for (let dx = -r; dx <= r; dx++) {
-            const nx = x + dx;
-            if (nx >= 0 && nx < width) {
-              sum += mask[ny * width + nx];
-              count++;
-            }
-          }
-        }
-      }
-      result[y * width + x] = sum / (count * 255);
-    }
-  }
-
-  return result;
-}
-
-/**
  * Intelligent Salient Edge & Background Segmentation Engine.
- * Runs completely client-side with zero WebAssembly fetch crashes.
+ * Runs completely client-side using the modular background removal pipeline.
  */
 async function performSmartBackgroundRemoval(
   img: HTMLImageElement,
   onProgress: (phase: string, progress: number) => void
 ): Promise<ImageData> {
-  const response = await fetch(img.src);
-  const imageBlob = await response.blob();
+  const width = img.naturalWidth;
+  const height = img.naturalHeight;
 
-  const result = await removeBackground(imageBlob, {
+  const result = await removeBackground(img, {
     model: 'u2netp',
     useWorker: false,
     preserveResolution: true,
+    maxDimension: Math.max(width, height),
     onProgress: (info: any) => {
       const progress = Number(info?.progress ?? 0);
       const message = String(info?.message ?? 'Processing image...');
@@ -177,9 +148,6 @@ async function performSmartBackgroundRemoval(
   });
 
   onProgress('Creating transparent cutout...', 0.95);
-
-  const width = img.naturalWidth;
-  const height = img.naturalHeight;
 
   // result.mask is an ImageData with dimensions (result.width, result.height).
   // The pixel values in result.mask.data are grayscale (R=G=B=maskByte, A=255).

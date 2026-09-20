@@ -7,6 +7,26 @@ import path from 'node:path';
 function onnxWasmPlugin(): Plugin {
   return {
     name: 'onnx-wasm-assets',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url && req.url.startsWith('/ort-wasm/')) {
+          const urlPath = req.url.split('?')[0].replace(/^\/ort-wasm\//, '');
+          const srcDir = path.resolve(process.cwd(), 'node_modules/onnxruntime-web/dist');
+          const filePath = path.join(srcDir, urlPath);
+          if (fs.existsSync(filePath)) {
+            if (filePath.endsWith('.wasm')) {
+              res.setHeader('Content-Type', 'application/wasm');
+            } else if (filePath.endsWith('.mjs') || filePath.endsWith('.js')) {
+              res.setHeader('Content-Type', 'application/javascript');
+            }
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            const stream = fs.createReadStream(filePath);
+            return stream.pipe(res);
+          }
+        }
+        next();
+      });
+    },
     configResolved(config) {
       try {
         const srcDir = path.resolve(config.root, 'node_modules/onnxruntime-web/dist');
