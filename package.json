@@ -16,7 +16,6 @@
   "dependencies": {
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
-    "@imgly/background-removal": "^1.7.0",
     "@supabase/supabase-js": "^2.57.4",
     "@tensorflow/tfjs": "^4.11.0",
     "@upscalerjs/esrgan-medium": "^1.0.0",
